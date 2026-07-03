@@ -274,7 +274,96 @@ This structure is a recommendation. It should be adjusted if the project adopts 
 - Add tests for critical gameplay logic.
 - Verify production build.
 
-## 15. Open Questions
+## 15. Product Workflow
+
+### Primary Happy Path
+
+1. A Discord user launches the activity from a voice channel.
+2. The app initializes the Discord SDK and calls readiness.
+3. If Discord context is available, the user enters the shared lobby.
+4. If Discord context is unavailable in local development, the user sees a local fallback lobby.
+5. Players join the lobby and are shown with display names, seats, and readiness/status.
+6. The host can start once 2-4 active players are present.
+7. The game deals a round:
+   - Assign each player a unique deck identity.
+   - Shuffle each player deck.
+   - Deal Post, Blitz, and Wood piles.
+   - Redeal a player's starting piles if their visible starting total exceeds 30.
+8. The game board appears for all active players.
+9. Players simultaneously make moves:
+   - Play available cards to shared Dutch piles.
+   - Stack or rearrange their own Post piles.
+   - Cycle through Wood cards.
+   - Refill Post pile slots from the Blitz pile where required.
+10. The authoritative game state validates each move.
+11. Valid moves update the board immediately.
+12. Invalid moves are rejected with quick visual feedback.
+13. A round ends when a player empties their Blitz pile and calls "Blitz."
+14. The results screen shows the round winner, per-player scoring, and updated totals.
+15. If no player has reached the game target, the host can start a rematch round.
+16. If a player reaches the target score, the game shows the overall winner and offers a new game.
+
+### Screen Flow
+
+- `Boot`: Load app shell, initialize Discord SDK, and determine environment.
+- `Local Fallback`: Show local development controls when Discord context is unavailable.
+- `Lobby`: Show joined players, host controls, and start eligibility.
+- `Waiting`: Show late joiners that a round is in progress and they will join next round.
+- `Round Setup`: Assign decks, shuffle, deal, and prepare synchronized state.
+- `Game Board`: Render active piles, center Dutch piles, scores, elapsed time, and controls.
+- `Rules Help`: Display concise rules without leaving the current room.
+- `Round Results`: Show Blitz caller, card counts, score changes, and rematch action.
+- `Game Results`: Show overall winner once the score target is reached.
+- `Disconnected`: Show reconnecting state and recover if the session becomes available again.
+
+### Lobby Workflow
+
+- User enters the activity.
+- App creates or joins the current room for the Discord activity instance.
+- First connected eligible player becomes host unless Discord ownership metadata provides a better host source.
+- Host sees an enabled start control only when 2-4 players are ready.
+- Non-host players see waiting status and current host.
+- Late joiners during active rounds are assigned `waiting` status.
+- Waiting players become eligible at the next lobby or rematch state.
+
+### Gameplay Workflow
+
+- Player selects or drags a visible card.
+- UI highlights valid target piles where possible.
+- Player drops or clicks a target pile.
+- Client submits a move intent with player, card, source, target, and timestamp.
+- Authoritative state checks card ownership, visibility, current location, pile rules, and round status.
+- Accepted moves update the shared game state and all clients reconcile to that state.
+- Rejected moves restore the local visual state and show non-blocking feedback.
+- The round monitor checks after each accepted move whether any Blitz pile is empty.
+
+### Scoring Workflow
+
+- Round enters scoring immediately after a valid Blitz condition.
+- Game counts each player's cards contributed to Dutch piles.
+- Game subtracts 2 points for each card remaining in that player's Blitz pile.
+- Round score deltas are added to total scores.
+- If any player has at least 75 points, the game enters overall results.
+- Otherwise, the game enters round results and waits for the host to start the next round.
+
+### Disconnect And Reconnect Workflow
+
+- If a player disconnects in the lobby, remove or mark them inactive after a short grace period.
+- If a player disconnects during a round, keep their seat and pile state temporarily reserved.
+- Reconnected players reclaim their previous seat by Discord user ID.
+- If the host disconnects, assign host to the next active player.
+- If active player count drops below 2 during a round, pause or end the round based on the multiplayer backend capability.
+- If the activity closes for all players, clean up the room state.
+
+### Error And Edge States
+
+- Discord SDK unavailable: show local fallback mode.
+- Missing client ID: show setup guidance and prevent Discord-only startup.
+- Multiplayer service unavailable: keep the lobby visible and show retry status.
+- Desynchronized client state: request a fresh authoritative snapshot.
+- Illegal move race: reject the slower conflicting move and reconcile the affected client.
+
+## 16. Open Questions
 
 - What multiplayer backend will provide authoritative game state?
 - Should the game follow Dutch Blitz rules closely, or use a simplified variant for faster onboarding?
